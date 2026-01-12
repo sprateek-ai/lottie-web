@@ -13,8 +13,6 @@ from io import BytesIO
 from PIL import Image
 import argparse
 import os
-import subprocess
-import re
 
 
 class VideoToLottieConverter:
@@ -35,100 +33,64 @@ class VideoToLottieConverter:
         self.quality = quality
         self.max_width = max_width
         
-    def _get_video_info(self):
-        """Get video info using ffprobe with fallback to cv2"""
-        try:
-            cmd = [
-                'ffprobe', '-v', 'error', '-select_streams', 'v:0',
-                '-show_entries', 'stream=width,height,avg_frame_rate,nb_frames',
-                '-of', 'default=noprint_wrappers=1:nokey=1', self.video_path
-            ]
-            output = subprocess.check_output(cmd).decode().split('\n')
-            width = int(output[0])
-            height = int(output[1])
-            
-            fps_parts = output[2].split('/')
-            if len(fps_parts) == 2:
-                original_fps = float(fps_parts[0]) / float(fps_parts[1])
-            else:
-                original_fps = float(output[2])
-                
-            total_frames = int(output[3]) if output[3].strip() else 0
-            
-            return width, height, original_fps, total_frames
-        except:
-            cap = cv2.VideoCapture(self.video_path)
-            if not cap.isOpened():
-                raise ValueError(f"Cannot open video file: {self.video_path}")
-            
-            original_fps = cap.get(cv2.CAP_PROP_FPS)
-            total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-            width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-            height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-            cap.release()
-            return width, height, original_fps, total_frames
-
     def extract_frames(self):
-        """Extract frames from video using FFmpeg for best reliability"""
-        width, height, original_fps, total_frames = self._get_video_info()
+        """Extract frames from video at specified FPS"""
+        cap = cv2.VideoCapture(self.video_path)
         
-        if width <= 0 or height <= 0:
-            raise ValueError("Could not read video dimensions. Please ensure the file is a valid video.")
-
-        # Calculate output dimensions
+        if not cap.isOpened():
+            raise ValueError(f"Cannot open video file: {self.video_path}")
+        
+        # Get video properties
+        original_fps = cap.get(cv2.CAP_PROP_FPS)
+        total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+        width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+        height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+        
+        print(f"Video properties:")
+        print(f"  Original FPS: {original_fps}")
+        print(f"  Total frames: {total_frames}")
+        print(f"  Resolution: {width}x{height}")
+        
+        # Calculate frame sampling rate
+        frame_interval = max(1, int(original_fps / self.target_fps))
+        
+        # Calculate output dimensions maintaining aspect ratio
         if width > self.max_width:
             output_width = self.max_width
             output_height = int(height * (self.max_width / width))
         else:
             output_width = width
             output_height = height
-            
-        # FFmpeg requires even dimensions
-        output_width = (output_width // 2) * 2
-        output_height = (output_height // 2) * 2
-        
-        print(f"Video Properties: {width}x{height} @ {original_fps:.2f} FPS")
-        print(f"Processing Resolution: {output_width}x{output_height}")
-
-        cmd = [
-            'ffmpeg', '-i', self.video_path,
-            '-vf', f'fps={self.target_fps},scale={output_width}:{output_height}:flags=lanczos',
-            '-f', 'image2pipe', '-vcodec', 'ppm', '-'
-        ]
-        
-        process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, bufsize=10**8)
         
         frames = []
-        while True:
-            # Check for header
-            header = b""
-            while header.count(b"\n") < 3:
-                char = process.stdout.read(1)
-                if not char: break
-                header += char
-            
-            if not header: break
-            
-            # Use raw frame reading
-            try:
-                parts = header.decode().split()
-                w, h = int(parts[1]), int(parts[2])
-                frame_data = process.stdout.read(w * h * 3)
-                if len(frame_data) < w * h * 3: break
-                
-                frame = np.frombuffer(frame_data, dtype=np.uint8).reshape((h, w, 3))
-                frames.append(frame)
-                
-                if len(frames) % 10 == 0:
-                    print(f"  Extracted {len(frames)} frames...")
-            except:
-                break
-                
-        process.terminate()
+        frame_count = 0
+        extracted_count = 0
         
-        if not frames:
-            raise ValueError("No frames were extracted. FFmpeg could not decode the video.")
+        print(f"Extracting frames (every {frame_interval} frame(s))...")
+        
+        while True:
+            ret, frame = cap.read()
+            if not ret:
+                break
             
+            if frame_count % frame_interval == 0:
+                # Resize with high-quality interpolation
+                resized = cv2.resize(frame, (output_width, output_height), 
+                                    interpolation=cv2.INTER_LANCZOS4)
+                
+                # Convert BGR to RGB
+                rgb_frame = cv2.cvtColor(resized, cv2.COLOR_BGR2RGB)
+                frames.append(rgb_frame)
+                extracted_count += 1
+                
+                if extracted_count % 10 == 0:
+                    print(f"  Extracted {extracted_count} frames...")
+            
+            frame_count += 1
+        
+        cap.release()
+        
+        print(f"Total frames extracted: {extracted_count}")
         return frames, output_width, output_height
     
     def detect_duplicate_frames(self, frames, threshold=0.98):
@@ -160,14 +122,8 @@ class VideoToLottieConverter:
                 unique_ids.append(unique_id)
                 frame_map[idx] = unique_id
         
-        total_in_frames = len(frames)
-        if total_in_frames == 0:
-            print("  Warning: No frames to analyze.")
-            return {}, []
-            
-        savings = ((1 - len(unique_frames)/total_in_frames) * 100)
-        print(f"  Found {len(unique_frames)} unique frames out of {total_in_frames}")
-        print(f"  Space savings: {savings:.1f}%")
+        print(f"  Found {len(unique_frames)} unique frames out of {len(frames)}")
+        print(f"  Space savings: {((1 - len(unique_frames)/len(frames)) * 100):.1f}%")
         
         return frame_map, [f for _, f in unique_frames]
     

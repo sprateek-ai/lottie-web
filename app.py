@@ -77,67 +77,72 @@ class ProgressVideoConverter(VideoToLottieConverter):
         self.tracker = tracker
     
     def extract_frames(self):
-        """Override extract_frames with progress tracking using FFmpeg"""
-        self.tracker.update("extracting", 10, "Gathering video information...")
+        """Override extract_frames with progress tracking"""
+        self.tracker.update("extracting", 10, "Opening video file...")
         
-        width, height, original_fps, total_frames = self._get_video_info()
+        cap = cv2.VideoCapture(self.video_path)
         
-        if width <= 0 or height <= 0:
-            raise ValueError("Could not read video dimensions. Please try a different format.")
-            
+        if not cap.isOpened():
+            raise ValueError(f"Cannot open video file: {self.video_path}")
+        
+        # Get video properties
+        original_fps = cap.get(cv2.CAP_PROP_FPS)
+        total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+        width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+        height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+        
         self.tracker.update("extracting", 15, 
-                          f"Video: {width}x{height}, {original_fps:.1f}fps")
+                          f"Video: {width}x{height}, {original_fps:.1f}fps, {total_frames} frames")
         
-        # Calculate output dimensions - Ensure even numbers for FFmpeg
+        # Calculate frame sampling rate
+        frame_interval = max(1, int(original_fps / self.target_fps))
+        
+        # Calculate output dimensions
         if width > self.max_width:
-            output_width = (self.max_width // 2) * 2
-            output_height = (int(height * (self.max_width / width)) // 2) * 2
+            output_width = self.max_width
+            output_height = int(height * (self.max_width / width))
         else:
-            output_width = (width // 2) * 2
-            output_height = (height // 2) * 2
-        
-        import subprocess
-        import numpy as np
-        
-        cmd = [
-            'ffmpeg', '-i', self.video_path,
-            '-vf', f'fps={self.target_fps},scale={output_width}:{output_height}:flags=lanczos',
-            '-f', 'image2pipe', '-vcodec', 'ppm', '-'
-        ]
-        
-        process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, bufsize=10**8)
+            output_width = width
+            output_height = height
         
         frames = []
-        self.tracker.update("extracting", 20, "Extracting frames using FFmpeg...")
+        frame_count = 0
+        extracted_count = 0
+        expected_frames = total_frames // frame_interval
         
-        try:
-            while True:
-                header = b""
-                while header.count(b"\n") < 3:
-                    char = process.stdout.read(1)
-                    if not char: break
-                    header += char
-                if not header: break
-                
-                parts = header.decode().split()
-                w, h = int(parts[1]), int(parts[2])
-                frame_data = process.stdout.read(w * h * 3)
-                if len(frame_data) < w * h * 3: break
-                
-                frame = np.frombuffer(frame_data, dtype=np.uint8).reshape((h, w, 3))
-                frames.append(frame)
-                
-                if len(frames) % 5 == 0:
-                    # Generic progress (20-50% range)
-                    progress = 20 + min(29, (len(frames) / 100) * 30) 
-                    self.tracker.update("extracting", int(progress), f"Extracted {len(frames)} frames...")
-        finally:
-            process.terminate()
+        self.tracker.update("extracting", 20, 
+                          f"Extracting frames (every {frame_interval} frame)...",
+                          expected_frames, 0)
+        
+        while True:
+            ret, frame = cap.read()
+            if not ret:
+                break
             
-        if not frames:
-            raise ValueError("No frames could be extracted from this video. It might be corrupted or an unsupported format.")
+            if frame_count % frame_interval == 0:
+                # Resize with high-quality interpolation
+                resized = cv2.resize(frame, (output_width, output_height), 
+                                    interpolation=cv2.INTER_LANCZOS4)
+                
+                # Convert BGR to RGB
+                rgb_frame = cv2.cvtColor(resized, cv2.COLOR_BGR2RGB)
+                frames.append(rgb_frame)
+                extracted_count += 1
+                
+                # Update progress (20-50% range for extraction)
+                progress = 20 + int((extracted_count / max(1, expected_frames)) * 30)
+                self.tracker.update("extracting", progress, 
+                                  f"Extracted {extracted_count} frames...",
+                                  expected_frames, extracted_count)
             
-        self.tracker.update("extracting", 50, f"Extraction complete: {len(frames)} frames")
+            frame_count += 1
+        
+        cap.release()
+        
+        self.tracker.update("extracting", 50, 
+                          f"Extraction complete: {extracted_count} frames",
+                          extracted_count, extracted_count)
+        
         return frames, output_width, output_height
     
     def detect_duplicate_frames(self, frames, threshold=0.98):
@@ -174,11 +179,7 @@ class ProgressVideoConverter(VideoToLottieConverter):
                               f"Analyzing frame {idx+1}/{total_frames}...",
                               total_frames, idx+1)
         
-        if total_frames == 0:
-            self.tracker.update("analyzing", 65, "No frames to analyze")
-            return {}, []
-            
-        savings = ((1 - len(unique_frames)/total_frames) * 100)
+        savings = ((1 - len(unique_frames)/len(frames)) * 100)
         self.tracker.update("analyzing", 65, 
                           f"Found {len(unique_frames)} unique frames (saved {savings:.1f}%)")
         
@@ -335,9 +336,9 @@ def convert_video():
             return jsonify({'error': f'Invalid file type. Allowed: {", ".join(ALLOWED_EXTENSIONS)}'}), 400
         
         # Get conversion parameters
-        fps = int(request.form.get('fps', 30))
-        quality = int(request.form.get('quality', 100))
-        max_width = int(request.form.get('max_width', 1280))
+        fps = int(request.form.get('fps', 15))
+        quality = int(request.form.get('quality', 85))
+        max_width = int(request.form.get('max_width', 608))
         
         # Validate parameters
         if not (1 <= fps <= 60):

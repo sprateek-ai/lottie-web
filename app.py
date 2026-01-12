@@ -98,6 +98,9 @@ class ProgressVideoConverter(VideoToLottieConverter):
         frame_interval = max(1, int(original_fps / self.target_fps))
         
         # Calculate output dimensions
+        if width <= 0 or height <= 0:
+            raise ValueError("Could not read video dimensions. Please try a different video format.")
+            
         if width > self.max_width:
             output_width = self.max_width
             output_height = int(height * (self.max_width / width))
@@ -179,7 +182,11 @@ class ProgressVideoConverter(VideoToLottieConverter):
                               f"Analyzing frame {idx+1}/{total_frames}...",
                               total_frames, idx+1)
         
-        savings = ((1 - len(unique_frames)/len(frames)) * 100)
+        if total_frames == 0:
+            self.tracker.update("analyzing", 65, "No frames to analyze")
+            return {}, []
+            
+        savings = ((1 - len(unique_frames)/total_frames) * 100)
         self.tracker.update("analyzing", 65, 
                           f"Found {len(unique_frames)} unique frames (saved {savings:.1f}%)")
         

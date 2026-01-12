@@ -55,6 +55,9 @@ class VideoToLottieConverter:
         frame_interval = max(1, int(original_fps / self.target_fps))
         
         # Calculate output dimensions maintaining aspect ratio
+        if width <= 0 or height <= 0:
+            raise ValueError("Could not read video dimensions. The file might be corrupted or in an unsupported format.")
+            
         if width > self.max_width:
             output_width = self.max_width
             output_height = int(height * (self.max_width / width))
@@ -122,8 +125,14 @@ class VideoToLottieConverter:
                 unique_ids.append(unique_id)
                 frame_map[idx] = unique_id
         
-        print(f"  Found {len(unique_frames)} unique frames out of {len(frames)}")
-        print(f"  Space savings: {((1 - len(unique_frames)/len(frames)) * 100):.1f}%")
+        total_in_frames = len(frames)
+        if total_in_frames == 0:
+            print("  Warning: No frames to analyze.")
+            return {}, []
+            
+        savings = ((1 - len(unique_frames)/total_in_frames) * 100)
+        print(f"  Found {len(unique_frames)} unique frames out of {total_in_frames}")
+        print(f"  Space savings: {savings:.1f}%")
         
         return frame_map, [f for _, f in unique_frames]
     

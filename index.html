@@ -1,0 +1,306 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Video to Lottie - Professional Video Converter</title>
+    <meta name="description"
+        content="Convert your videos to Lottie animations with our professional online tool. Fast, easy, and free.">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap"
+        rel="stylesheet">
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+
+<body>
+    <!-- Background Effect -->
+    <div class="background-gradient"></div>
+    <div class="background-grid"></div>
+
+    <!-- Header -->
+    <header class="header">
+        <div class="container">
+            <div class="logo">
+                <img src="/static/Concretio-white.webp" class="logo-icon" style="height: 40px; width: auto;">
+            </div>
+            <nav class="nav">
+                <a href="#features" class="nav-link">Features</a>
+                <a href="#how-it-works" class="nav-link">How It Works</a>
+                <a href="https://www.concret.io/" target="_blank" class="nav-link">Concret.io</a>
+            </nav>
+        </div>
+    </header>
+
+    <!-- Hero Section -->
+    <section class="hero">
+        <div class="container">
+            <div class="hero-content">
+                <h1 class="hero-title">
+                    Transform Videos into
+                    <span class="gradient-text">Lottie Animations</span>
+                </h1>
+                <p class="hero-description">
+                    Convert your screen recordings and videos into lightweight, scalable Lottie JSON animations.
+                    Professional quality, blazing fast, completely free.
+                </p>
+                <div class="hero-stats">
+                    <div class="stat">
+                        <div class="stat-value">100MB</div>
+                        <div class="stat-label">Max File Size</div>
+                    </div>
+                    <div class="stat">
+                        <div class="stat-value">60 FPS</div>
+                        <div class="stat-label">Frame Rate</div>
+                    </div>
+                    <div class="stat">
+                        <div class="stat-value">WebP</div>
+                        <div class="stat-label">Optimized</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Converter Section -->
+    <section class="converter-section">
+        <div class="container">
+            <div class="converter-card" id="converter">
+
+                <!-- Upload Area -->
+                <div class="upload-area" id="uploadArea">
+                    <input type="file" id="videoInput" accept=".mp4,.mov,.avi,.webm,.mkv" hidden>
+                    <div class="upload-content">
+                        <div class="upload-icon">
+                            <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                <path
+                                    d="M21 15V19C21 19.5304 20.7893 20.0391 20.4142 20.4142C20.0391 20.7893 19.5304 21 19 21H5C4.46957 21 3.96086 20.7893 3.58579 20.4142C3.21071 20.0391 3 19.5304 3 19V15"
+                                    stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                                    stroke-linejoin="round" />
+                                <path d="M17 8L12 3L7 8" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                                    stroke-linejoin="round" />
+                                <path d="M12 3V15" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                                    stroke-linejoin="round" />
+                            </svg>
+                        </div>
+                        <h3 class="upload-title">Drop your video here</h3>
+                        <p class="upload-description">or click to browse</p>
+                        <p class="upload-formats">Supports MP4, MOV, AVI, WebM, MKV</p>
+                        <button class="btn-primary" id="selectVideoBtn">
+                            Select Video
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Settings Panel -->
+                <div class="settings-panel" id="settingsPanel" style="display: none;">
+                    <div class="settings-header">
+                        <h3>Conversion Settings</h3>
+                        <button class="btn-text" onclick="resetConverter()">
+                            <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                <path d="M18 6L6 18M6 6L18 18" stroke="currentColor" stroke-width="2"
+                                    stroke-linecap="round" />
+                            </svg>
+                        </button>
+                    </div>
+
+                    <div class="file-info" id="fileInfo"></div>
+
+                    <div class="settings-grid">
+                        <div class="setting-group">
+                            <label for="fpsInput" class="setting-label">
+                                Frame Rate (FPS)
+                                <span class="setting-value" id="fpsValue">30</span>
+                            </label>
+                            <input type="range" id="fpsInput" min="5" max="60" value="30" class="slider">
+                            <div class="setting-hint">Higher = smoother, larger file</div>
+                        </div>
+
+                        <div class="setting-group">
+                            <label for="qualityInput" class="setting-label">
+                                Quality
+                                <span class="setting-value" id="qualityValue">100</span>
+                            </label>
+                            <input type="range" id="qualityInput" min="50" max="100" value="100" class="slider">
+                            <div class="setting-hint">Higher = better quality, larger file</div>
+                        </div>
+
+                        <div class="setting-group">
+                            <label for="widthInput" class="setting-label">
+                                Max Width (px)
+                                <span class="setting-value" id="widthValue">1280</span>
+                            </label>
+                            <input type="range" id="widthInput" min="320" max="1920" step="32" value="1280"
+                                class="slider">
+                            <div class="setting-hint">Larger = higher resolution, larger file</div>
+                        </div>
+                    </div>
+
+                    <button class="btn-primary btn-large" id="convertBtn" onclick="startConversion()">
+                        <svg class="btn-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                            <path d="M5 3L19 12L5 21V3Z" fill="currentColor" />
+                        </svg>
+                        Start Conversion
+                    </button>
+                </div>
+
+                <!-- Progress Panel -->
+                <div class="progress-panel" id="progressPanel" style="display: none;">
+                    <div class="progress-header">
+                        <h3 id="progressStage">Processing...</h3>
+                        <div class="progress-percentage" id="progressPercentage">0%</div>
+                    </div>
+
+                    <div class="progress-bar-container">
+                        <div class="progress-bar" id="progressBar"></div>
+                    </div>
+
+                    <p class="progress-message" id="progressMessage">Initializing conversion...</p>
+
+                    <div class="progress-details" id="progressDetails"></div>
+
+                    <div class="progress-animation">
+                        <div class="spinner"></div>
+                    </div>
+                </div>
+
+                <!-- Complete Panel -->
+                <div class="complete-panel" id="completePanel" style="display: none;">
+                    <div class="complete-icon">
+                        <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                            <path
+                                d="M22 11.08V12C21.9988 14.1564 21.3005 16.2547 20.0093 17.9818C18.7182 19.7088 16.9033 20.9725 14.8354 21.5839C12.7674 22.1953 10.5573 22.1219 8.53447 21.3746C6.51168 20.6273 4.78465 19.2461 3.61096 17.4371C2.43727 15.628 1.87979 13.4881 2.02168 11.3363C2.16356 9.18455 2.99721 7.13631 4.39828 5.49706C5.79935 3.85781 7.69279 2.71537 9.79619 2.24013C11.8996 1.7649 14.1003 1.98232 16.07 2.85999"
+                                stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+                            <path d="M22 4L12 14.01L9 11.01" stroke="currentColor" stroke-width="2"
+                                stroke-linecap="round" stroke-linejoin="round" />
+                        </svg>
+                    </div>
+                    <h3 class="complete-title">Conversion Complete!</h3>
+                    <p class="complete-message" id="completeMessage">Your Lottie animation is ready to download.</p>
+
+                    <div class="complete-stats" id="completeStats"></div>
+
+                    <div class="complete-actions">
+                        <button class="btn-primary btn-large" id="downloadBtn">
+                            <svg class="btn-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                <path
+                                    d="M21 15V19C21 19.5304 20.7893 20.0391 20.4142 20.4142C20.0391 20.7893 19.5304 21 19 21H5C4.46957 21 3.96086 20.7893 3.58579 20.4142C3.21071 20.0391 3 19.5304 3 19V15"
+                                    stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                                    stroke-linejoin="round" />
+                                <path d="M7 10L12 15L17 10" stroke="currentColor" stroke-width="2"
+                                    stroke-linecap="round" stroke-linejoin="round" />
+                                <path d="M12 15V3" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                                    stroke-linejoin="round" />
+                            </svg>
+                            Download Lottie JSON
+                        </button>
+                        <button class="btn-secondary" onclick="resetConverter()">
+                            Convert Another Video
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Error Panel -->
+                <div class="error-panel" id="errorPanel" style="display: none;">
+                    <div class="error-icon">
+                        <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                            <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2" />
+                            <path d="M12 8V12" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
+                            <path d="M12 16H12.01" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
+                        </svg>
+                    </div>
+                    <h3 class="error-title">Conversion Failed</h3>
+                    <p class="error-message" id="errorMessage">An error occurred during conversion.</p>
+                    <button class="btn-primary" onclick="resetConverter()">Try Again</button>
+                </div>
+
+            </div>
+        </div>
+    </section>
+
+    <!-- Features Section -->
+    <section class="features-section" id="features">
+        <div class="container">
+            <h2 class="section-title">Why Choose Our Converter?</h2>
+            <div class="features-grid">
+                <div class="feature-card">
+                    <div class="feature-icon">⚡</div>
+                    <h3 class="feature-title">Lightning Fast</h3>
+                    <p class="feature-description">Optimized processing pipeline with WebP compression for quick
+                        conversions</p>
+                </div>
+                <div class="feature-card">
+                    <div class="feature-icon">🎨</div>
+                    <h3 class="feature-title">High Quality</h3>
+                    <p class="feature-description">Preserves visual fidelity with advanced frame analysis and
+                        optimization</p>
+                </div>
+                <div class="feature-card">
+                    <div class="feature-icon">📦</div>
+                    <h3 class="feature-title">Optimized Output</h3>
+                    <p class="feature-description">Smart duplicate detection reduces file size without quality loss</p>
+                </div>
+                <div class="feature-card">
+                    <div class="feature-icon">🔒</div>
+                    <h3 class="feature-title">Privacy First</h3>
+                    <p class="feature-description">All processing happens server-side, files are automatically deleted
+                    </p>
+                </div>
+                <div class="feature-card">
+                    <div class="feature-icon">⚙️</div>
+                    <h3 class="feature-title">Customizable</h3>
+                    <p class="feature-description">Adjust FPS, quality, and resolution to fit your needs</p>
+                </div>
+                <div class="feature-card">
+                    <div class="feature-icon">💯</div>
+                    <h3 class="feature-title">100% Free</h3>
+                    <p class="feature-description">No limits, no watermarks, no subscriptions required</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- How It Works Section -->
+    <section class="how-it-works-section" id="how-it-works">
+        <div class="container">
+            <h2 class="section-title">How It Works</h2>
+            <div class="steps-grid">
+                <div class="step-card">
+                    <div class="step-number">1</div>
+                    <h3 class="step-title">Upload Video</h3>
+                    <p class="step-description">Select your video file (MP4, MOV, AVI, WebM, or MKV)</p>
+                </div>
+                <div class="step-arrow">→</div>
+                <div class="step-card">
+                    <div class="step-number">2</div>
+                    <h3 class="step-title">Configure Settings</h3>
+                    <p class="step-description">Adjust frame rate, quality, and resolution to your preference</p>
+                </div>
+                <div class="step-arrow">→</div>
+                <div class="step-card">
+                    <div class="step-number">3</div>
+                    <h3 class="step-title">Convert</h3>
+                    <p class="step-description">Our AI-powered engine processes your video with optimization</p>
+                </div>
+                <div class="step-arrow">→</div>
+                <div class="step-card">
+                    <div class="step-number">4</div>
+                    <h3 class="step-title">Download</h3>
+                    <p class="step-description">Get your Lottie JSON file ready to use anywhere</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Footer -->
+    <footer class="footer">
+        <div class="container">
+            <p>&copy; 2026 Video to Lottie Converter. Built with ❤️ for the animation community.</p>
+        </div>
+    </footer>
+
+    <script src="/static/script.js"></script>
+</body>
+
+</html>

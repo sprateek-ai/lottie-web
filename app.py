@@ -109,7 +109,7 @@ class ProgressVideoConverter(VideoToLottieConverter):
         frames = []
         frame_count = 0
         extracted_count = 0
-        expected_frames = total_frames // frame_interval
+        expected_frames = max(1, total_frames // frame_interval)
         
         self.tracker.update("extracting", 20, 
                           f"Extracting frames (every {frame_interval} frame)...",
@@ -175,12 +175,12 @@ class ProgressVideoConverter(VideoToLottieConverter):
                 frame_map[idx] = unique_id
             
             # Update progress (55-65% range)
-            progress = 55 + int((idx / total_frames) * 10)
+            progress = 55 + int((idx / max(1, total_frames)) * 10)
             self.tracker.update("analyzing", progress, 
                               f"Analyzing frame {idx+1}/{total_frames}...",
                               total_frames, idx+1)
         
-        savings = ((1 - len(unique_frames)/len(frames)) * 100)
+        savings = ((1 - len(unique_frames) / max(1, len(frames))) * 100)
         self.tracker.update("analyzing", 65, 
                           f"Found {len(unique_frames)} unique frames (saved {savings:.1f}%)")
         
@@ -221,7 +221,7 @@ class ProgressVideoConverter(VideoToLottieConverter):
                 gc.collect()
             
             # Update progress (70-90% range)
-            progress = 70 + int((idx / len(unique_frames)) * 20)
+            progress = 70 + int((idx / max(1, len(unique_frames))) * 20)
             self.tracker.update("encoding", progress, 
                               f"Encoding frame {idx+1}/{len(unique_frames)}...",
                               len(unique_frames), idx+1)

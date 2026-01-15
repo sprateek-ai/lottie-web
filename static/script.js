@@ -171,14 +171,22 @@ function startPolling() {
         clearInterval(pollingInterval);
     }
 
+    let errorCount = 0;
+    const maxErrors = 5;
+
     pollingInterval = setInterval(async () => {
         try {
             const response = await fetch(`/api/status/${currentJobId}`);
 
             if (!response.ok) {
-                throw new Error('Failed to get status');
+                errorCount++;
+                if (errorCount >= maxErrors) {
+                    throw new Error('Lost connection to server. Please check your internet.');
+                }
+                return; // Suppress transient errors
             }
 
+            errorCount = 0; // Reset on success
             const status = await response.json();
             updateProgress(status);
 
@@ -187,14 +195,14 @@ function startPolling() {
                 showComplete(status);
             } else if (status.status === 'error') {
                 clearInterval(pollingInterval);
-                showError(status.error || 'Conversion failed');
+                showError(status.error || 'Conversion failed during processing.');
             }
 
         } catch (error) {
             clearInterval(pollingInterval);
             showError(error.message);
         }
-    }, 500); // Poll every 500ms
+    }, 1000); // Poll every 1s for better stability on Render
 }
 
 function updateProgress(status) {

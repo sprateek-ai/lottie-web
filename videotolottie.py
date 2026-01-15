@@ -13,7 +13,6 @@ from io import BytesIO
 from PIL import Image
 import argparse
 import os
-import gc
 
 
 class VideoToLottieConverter:
@@ -47,6 +46,11 @@ class VideoToLottieConverter:
         width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
         height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
         
+        print(f"Video properties:")
+        print(f"  Original FPS: {original_fps}")
+        print(f"  Total frames: {total_frames}")
+        print(f"  Resolution: {width}x{height}")
+        
         # Calculate frame sampling rate
         frame_interval = max(1, int(original_fps / self.target_fps))
         
@@ -61,6 +65,8 @@ class VideoToLottieConverter:
         frames = []
         frame_count = 0
         extracted_count = 0
+        
+        print(f"Extracting frames (every {frame_interval} frame(s))...")
         
         while True:
             ret, frame = cap.read()
@@ -77,15 +83,19 @@ class VideoToLottieConverter:
                 frames.append(rgb_frame)
                 extracted_count += 1
                 
+                if extracted_count % 10 == 0:
+                    print(f"  Extracted {extracted_count} frames...")
             
             frame_count += 1
         
         cap.release()
         
+        print(f"Total frames extracted: {extracted_count}")
         return frames, output_width, output_height
     
     def detect_duplicate_frames(self, frames, threshold=0.98):
         """Detect duplicate or near-duplicate frames to optimize file size"""
+        print("Analyzing frames for duplicates...")
         
         frame_map = {}  # Maps frame index to unique image ID
         unique_frames = []
@@ -112,14 +122,10 @@ class VideoToLottieConverter:
                 unique_ids.append(unique_id)
                 frame_map[idx] = unique_id
         
+        print(f"  Found {len(unique_frames)} unique frames out of {len(frames)}")
+        print(f"  Space savings: {((1 - len(unique_frames)/len(frames)) * 100):.1f}%")
         
         return frame_map, [f for _, f in unique_frames]
-    
-    def _clear_frames(self, frames_list):
-        """Helper to clear a list of frames and collect garbage"""
-        if frames_list:
-            frames_list.clear()
-        gc.collect()
     
     def _calculate_similarity(self, img1, img2):
         """Calculate similarity between two grayscale images"""
@@ -162,10 +168,13 @@ class VideoToLottieConverter:
         # Detect duplicate frames for optimization
         frame_map, unique_frames = self.detect_duplicate_frames(frames)
         
+        print("Converting frames to base64 WebP format...")
         
         # Create assets array with unique frames only
         assets = []
         for idx, frame in enumerate(unique_frames):
+            if (idx + 1) % 5 == 0 or idx == 0:
+                print(f"  Processing unique frame {idx + 1}/{len(unique_frames)}...")
             
             base64_image = self.frame_to_base64_webp(frame)
             
@@ -177,11 +186,6 @@ class VideoToLottieConverter:
                 "e": 1
             }
             assets.append(asset)
-            
-            # Clear raw frame data immediately after encoding to save RAM
-            unique_frames[idx] = None
-            if idx % 10 == 0:
-                gc.collect()
         
         # Create layers - one per frame, referencing appropriate asset
         layers = []
@@ -224,6 +228,14 @@ class VideoToLottieConverter:
     
     def convert(self):
         """Main conversion process"""
+        print(f"\n{'='*60}")
+        print(f"Video to Lottie Converter")
+        print(f"{'='*60}\n")
+        print(f"Input: {self.video_path}")
+        print(f"Output: {self.output_path}")
+        print(f"Target FPS: {self.target_fps}")
+        print(f"Quality: {self.quality}")
+        print(f"Max Width: {self.max_width}\n")
         
         # Extract frames
         frames, width, height = self.extract_frames()
@@ -231,20 +243,23 @@ class VideoToLottieConverter:
         # Create Lottie JSON
         lottie_data = self.create_lottie_json(frames, width, height)
         
-        # Clear raw frames immediately
-        self._clear_frames(frames)
-        
         # Save to file with minimal whitespace
+        print(f"\nSaving Lottie JSON to: {self.output_path}")
         with open(self.output_path, 'w') as f:
             json.dump(lottie_data, f, separators=(',', ':'))
         
         file_size = os.path.getsize(self.output_path)
         file_size_mb = file_size / (1024 * 1024)
         
-        
-        # Final cleanup
-        del lottie_data
-        gc.collect()
+        print(f"\n{'='*60}")
+        print(f"✅ Conversion Complete!")
+        print(f"{'='*60}")
+        print(f"Output file size: {file_size_mb:.2f} MB")
+        print(f"Total frames: {len(frames)}")
+        print(f"Unique frames: {len(lottie_data['assets'])}")
+        print(f"Frame rate: {self.target_fps} FPS")
+        print(f"Resolution: {width}x{height}")
+        print(f"{'='*60}\n")
         
         return self.output_path
 
@@ -275,12 +290,15 @@ Examples:
     
     # Validate inputs
     if not os.path.exists(args.video):
+        print(f"❌ Error: Video file not found: {args.video}")
         return
     
     if args.quality < 1 or args.quality > 100:
+        print("❌ Error: Quality must be between 1 and 100")
         return
     
     if args.fps < 1 or args.fps > 60:
+        print("❌ Error: FPS must be between 1 and 60")
         return
     
     # Create converter and run
@@ -294,7 +312,9 @@ Examples:
     
     try:
         output_file = converter.convert()
+        print(f"✅ Success! Lottie JSON saved to: {output_file}")
     except Exception as e:
+        print(f"❌ Error during conversion: {str(e)}")
         raise
 
 

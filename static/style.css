@@ -7,22 +7,20 @@
 
 :root {
     /* Colors */
-    --primary: #818cf8;
-    --primary-light: #a5b4fc;
-    --primary-dark: #6366f1;
-    --secondary: #f472b6;
-    --success: #34d399;
+    --primary: #6366f1;
+    --primary-light: #818cf8;
+    --primary-dark: #4f46e5;
+    --secondary: #ec4899;
+    --success: #10b981;
     --error: #ef4444;
     --warning: #f59e0b;
 
     /* Neutrals */
     --bg-primary: #0f0f1e;
     --bg-secondary: #1a1a2e;
-    --bg-tertiary: #2a2a4a;
-    --surface: rgba(255, 255, 255, 0.08);
-    --surface-hover: rgba(255, 255, 255, 0.12);
-    --glass: rgba(255, 255, 255, 0.03);
-    --glass-border: rgba(255, 255, 255, 0.1);
+    --bg-tertiary: #252538;
+    --surface: rgba(255, 255, 255, 0.05);
+    --surface-hover: rgba(255, 255, 255, 0.08);
 
     /* Text */
     --text-primary: #ffffff;
@@ -111,9 +109,9 @@ body {
 /* Header */
 .header {
     padding: var(--spacing-md) 0;
-    backdrop-filter: blur(16px);
-    background: rgba(15, 15, 30, 0.7);
-    border-bottom: 1px solid var(--glass-border);
+    backdrop-filter: blur(10px);
+    background: rgba(15, 15, 30, 0.8);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
     position: sticky;
     top: 0;
     z-index: 100;
@@ -255,14 +253,12 @@ body {
 
 .converter-card {
     background: var(--bg-secondary);
-    backdrop-filter: blur(20px);
     border-radius: var(--radius-xl);
     padding: var(--spacing-xl);
-    box-shadow: 0 20px 50px rgba(0, 0, 0, 0.5);
-    border: 1px solid var(--glass-border);
+    box-shadow: var(--shadow-lg);
+    border: 1px solid rgba(255, 255, 255, 0.1);
     position: relative;
     overflow: hidden;
-    transition: transform var(--transition-base);
 }
 
 .converter-card::before {
@@ -708,12 +704,11 @@ body {
 
 .error-message {
     color: var(--text-secondary);
-    font-size: 1rem;
+    font-size: 1.125rem;
     margin-bottom: var(--spacing-lg);
-    background: rgba(239, 68, 68, 0.05);
+    background: rgba(239, 68, 68, 0.1);
     padding: var(--spacing-md);
     border-radius: var(--radius-md);
-    border: 1px solid rgba(239, 68, 68, 0.2);
     border-left: 4px solid var(--error);
 }
 

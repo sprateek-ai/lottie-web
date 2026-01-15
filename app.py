@@ -14,7 +14,6 @@ import shutil
 from pathlib import Path
 import threading
 import time
-import gc
 from videotolottie import VideoToLottieConverter
 import cv2
 import base64
@@ -109,7 +108,7 @@ class ProgressVideoConverter(VideoToLottieConverter):
         frames = []
         frame_count = 0
         extracted_count = 0
-        expected_frames = max(1, total_frames // frame_interval)
+        expected_frames = total_frames // frame_interval
         
         self.tracker.update("extracting", 20, 
                           f"Extracting frames (every {frame_interval} frame)...",
@@ -175,22 +174,16 @@ class ProgressVideoConverter(VideoToLottieConverter):
                 frame_map[idx] = unique_id
             
             # Update progress (55-65% range)
-            progress = 55 + int((idx / max(1, total_frames)) * 10)
+            progress = 55 + int((idx / total_frames) * 10)
             self.tracker.update("analyzing", progress, 
                               f"Analyzing frame {idx+1}/{total_frames}...",
                               total_frames, idx+1)
         
-        savings = ((1 - len(unique_frames) / max(1, len(frames))) * 100)
+        savings = ((1 - len(unique_frames)/len(frames)) * 100)
         self.tracker.update("analyzing", 65, 
                           f"Found {len(unique_frames)} unique frames (saved {savings:.1f}%)")
         
         return frame_map, [f for _, f in unique_frames]
-    
-    def _clear_frames(self, frames_list):
-        """Helper to clear a list of frames and collect garbage"""
-        if frames_list:
-            frames_list.clear()
-        gc.collect()
     
     def create_lottie_json(self, frames, width, height):
         """Override with progress tracking"""
@@ -215,13 +208,8 @@ class ProgressVideoConverter(VideoToLottieConverter):
             }
             assets.append(asset)
             
-            # Clear raw frame data immediately after encoding to save RAM
-            unique_frames[idx] = None
-            if idx % 10 == 0:
-                gc.collect()
-            
             # Update progress (70-90% range)
-            progress = 70 + int((idx / max(1, len(unique_frames))) * 20)
+            progress = 70 + int((idx / len(unique_frames)) * 20)
             self.tracker.update("encoding", progress, 
                               f"Encoding frame {idx+1}/{len(unique_frames)}...",
                               len(unique_frames), idx+1)
@@ -279,9 +267,6 @@ class ProgressVideoConverter(VideoToLottieConverter):
         # Create Lottie JSON
         lottie_data = self.create_lottie_json(frames, width, height)
         
-        # Clear raw frames immediately
-        self._clear_frames(frames)
-        
         # Save to file
         self.tracker.update("saving", 98, "Saving Lottie JSON file...")
         
@@ -293,10 +278,6 @@ class ProgressVideoConverter(VideoToLottieConverter):
         
         self.tracker.update("complete", 100, 
                           f"Complete! {len(frames)} frames, {file_size_mb:.2f}MB")
-        
-        # Final cleanup
-        del lottie_data
-        gc.collect()
         
         return self.output_path
 
@@ -321,10 +302,6 @@ def convert_video_background(job_id, video_path, output_path, fps, quality, max_
         conversion_status[job_id]['status'] = 'complete'
         conversion_status[job_id]['output_file'] = output_file
         conversion_status[job_id]['file_size'] = os.path.getsize(output_file)
-        
-        # Cleanup converter and collect garbage
-        del converter
-        gc.collect()
         
     except Exception as e:
         conversion_status[job_id] = {

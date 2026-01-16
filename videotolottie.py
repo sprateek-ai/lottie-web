@@ -44,10 +44,6 @@ class CompactVideoToLottie:
         w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
         h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
 
-        if w <= 0 or h <= 0:
-            cap.release()
-            raise RuntimeError(f"Invalid video dimensions: {w}x{h}")
-
         if w > self.max_width:
             scale = self.max_width / w
             w = self.max_width
@@ -69,8 +65,6 @@ class CompactVideoToLottie:
             idx += 1
 
         cap.release()
-        if not frames:
-            raise RuntimeError("No frames extracted from video. The file might be corrupt or unsupported.")
         return frames, w, h
 
     # -----------------------------
@@ -88,7 +82,7 @@ class CompactVideoToLottie:
     # -----------------------------
     # COLOR QUANTIZATION
     # -----------------------------
-    def quantize(self, frame, colors=256):
+    def quantize(self, frame, colors=128):
         img = Image.fromarray(frame)
         img = img.convert("P", palette=Image.ADAPTIVE, colors=colors)
         return np.array(img.convert("RGB"))

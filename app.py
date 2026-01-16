@@ -79,26 +79,17 @@ class ProgressVideoConverter(CompactVideoToLottie):
     def extract_frames(self):
         """Override extract_frames with progress tracking"""
         self.tracker.update("extracting", 10, "Opening video file...")
-        print(f"DEBUG: Opening video {self.video_path}")
         
         cap = cv2.VideoCapture(self.video_path)
         if not cap.isOpened():
             raise RuntimeError(f"Cannot open video: {self.video_path}")
 
         orig_fps = cap.get(cv2.CAP_PROP_FPS)
-        # Handle cases where OpenCV might return 0 or invalid FPS
-        actual_fps = max(1.0, float(orig_fps)) if orig_fps > 0 else 30.0
-        interval = max(1, int(actual_fps / max(1, self.fps)))
+        interval = max(1, int(orig_fps / self.fps))
 
         w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
         h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
         total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-
-        print(f"DEBUG: Video info - {w}x{h}, {orig_fps} fps, {total_frames} frames, interval={interval}")
-
-        if w <= 0 or h <= 0:
-            cap.release()
-            raise RuntimeError(f"Invalid video dimensions: {w}x{h}")
 
         if w > self.max_width:
             scale = self.max_width / w
@@ -106,11 +97,11 @@ class ProgressVideoConverter(CompactVideoToLottie):
             h = int(h * scale)
 
         self.tracker.update("extracting", 15, 
-                          f"Video: {w}x{h}, {actual_fps:.1f}fps, {total_frames} frames")
+                          f"Video: {w}x{h}, {orig_fps:.1f}fps, {total_frames} frames")
         
         frames = []
         idx = 0
-        expected_frames = max(1, total_frames // interval)
+        expected_frames = total_frames // interval
 
         self.tracker.update("extracting", 20, 
                           f"Extracting frames (every {interval} frame)...",
@@ -127,19 +118,15 @@ class ProgressVideoConverter(CompactVideoToLottie):
                 frames.append(frame)
                 
                 # Update progress (20-50% range for extraction)
-                progress = 20 + int((len(frames) / expected_frames) * 30)
-                if len(frames) % 10 == 0:
-                    self.tracker.update("extracting", min(49, progress), 
-                                      f"Extracted {len(frames)} frames...",
-                                      expected_frames, len(frames))
+                progress = 20 + int((len(frames) / max(1, expected_frames)) * 30)
+                self.tracker.update("extracting", progress, 
+                                  f"Extracted {len(frames)} frames...",
+                                  expected_frames, len(frames))
 
             idx += 1
 
         cap.release()
         
-        if not frames:
-            raise RuntimeError("No frames were extracted. The video file may be corrupt or empty.")
-
         self.tracker.update("extracting", 50, 
                           f"Extraction complete: {len(frames)} frames",
                           len(frames), len(frames))
@@ -148,16 +135,10 @@ class ProgressVideoConverter(CompactVideoToLottie):
 
     def smooth_frames(self, frames, alpha=0.7):
         """Override with progress tracking"""
-        if not frames:
-            return []
-            
         self.tracker.update("smoothing", 52, "Smoothing frames for better quality...")
         smoothed = [frames[0]]
         total = len(frames)
         
-        if total <= 1:
-            return frames
-
         for i in range(1, total):
             prev = smoothed[-1].astype(np.float32)
             curr = frames[i].astype(np.float32)
@@ -166,7 +147,7 @@ class ProgressVideoConverter(CompactVideoToLottie):
             
             # Update progress (52-58% range)
             progress = 52 + int((i / total) * 6)
-            if i % 10 == 0:
+            if i % 5 == 0:
                 self.tracker.update("smoothing", progress, 
                                   f"Smoothing frame {i}/{total}...")
         
@@ -174,9 +155,6 @@ class ProgressVideoConverter(CompactVideoToLottie):
 
     def deduplicate(self, frames):
         """Override with progress tracking"""
-        if not frames:
-            return [], []
-            
         self.tracker.update("analyzing", 60, "Analyzing frames for optimization...")
         assets = []
         frame_refs = []
@@ -199,9 +177,7 @@ class ProgressVideoConverter(CompactVideoToLottie):
                     break
 
             if not matched:
-                # For "perfect output", you might want to increase quantization colors or skip it
-                # Using high number of colors for better quality
-                qf = self.quantize(frame, colors=256) 
+                qf = self.quantize(frame)
                 encoded = self.encode_webp(qf)
                 asset_id = len(assets)
 
@@ -218,7 +194,7 @@ class ProgressVideoConverter(CompactVideoToLottie):
 
             # Update progress (60-85% range)
             progress = 60 + int((i / total) * 25)
-            if i % 10 == 0:
+            if i % 5 == 0:
                 self.tracker.update("analyzing", progress, 
                                   f"Analyzing frame {i+1}/{total}...",
                                   total, i+1)
@@ -231,43 +207,34 @@ class ProgressVideoConverter(CompactVideoToLottie):
 
     def convert(self):
         """Override convert with progress tracking"""
-        try:
-            self.tracker.update("starting", 5, "Initializing compact converter...")
-            
-            # Extract frames
-            frames, w, h = self.extract_frames()
-            
-            # Smooth frames
-            frames = self.smooth_frames(frames)
-            
-            # Deduplicate and encode
-            assets, refs = self.deduplicate(frames)
-            
-            if not assets or not refs:
-                raise RuntimeError("Failed to generate animation assets.")
-
-            self.tracker.update("finalizing", 90, "Creating Lottie structure...")
-            
-            # Build Lottie
-            lottie_json = self.build_lottie(assets, refs, w, h)
-            
-            self.tracker.update("saving", 95, "Saving compact Lottie JSON file...")
-            
-            with open(self.output_path, 'w') as f:
-                json.dump(lottie_json, f, separators=(',', ':'))
-            
-            file_size = os.path.getsize(self.output_path)
-            file_size_mb = file_size / (1024 * 1024)
-            
-            self.tracker.update("complete", 100, 
-                              f"Complete! {len(frames)} frames, {file_size_mb:.2f}MB")
-            
-            return self.output_path
-        except Exception as e:
-            print(f"ERROR in convert: {str(e)}")
-            import traceback
-            traceback.print_exc()
-            raise
+        self.tracker.update("starting", 5, "Initializing compact converter...")
+        
+        # Extract frames
+        frames, w, h = self.extract_frames()
+        
+        # Smooth frames
+        frames = self.smooth_frames(frames)
+        
+        # Deduplicate and encode
+        assets, refs = self.deduplicate(frames)
+        
+        self.tracker.update("finalizing", 90, "Creating Lottie structure...")
+        
+        # Build Lottie
+        lottie_json = self.build_lottie(assets, refs, w, h)
+        
+        self.tracker.update("saving", 95, "Saving compact Lottie JSON file...")
+        
+        with open(self.output_path, 'w') as f:
+            json.dump(lottie_json, f, separators=(',', ':'))
+        
+        file_size = os.path.getsize(self.output_path)
+        file_size_mb = file_size / (1024 * 1024)
+        
+        self.tracker.update("complete", 100, 
+                          f"Complete! {len(frames)} frames, {file_size_mb:.2f}MB")
+        
+        return self.output_path
 
 
 def convert_video_background(job_id, video_path, output_path, fps, quality, max_width):

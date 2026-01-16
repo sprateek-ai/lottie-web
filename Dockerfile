@@ -1,13 +1,10 @@
 # Use an official lightweight Python image
 FROM python:3.11-slim
 
-# Install system dependencies for OpenCV, Pillow, and FFmpeg
+# Install system dependencies for OpenCV and Pillow
 RUN apt-get update && apt-get install -y \
     libgl1 \
     libglib2.0-0 \
-    ffmpeg \
-    libsm6 \
-    libxext6 \
     && rm -rf /var/lib/apt/lists/*
 
 # Set working directory

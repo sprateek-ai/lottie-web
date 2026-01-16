@@ -14,7 +14,7 @@ import shutil
 from pathlib import Path
 import threading
 import time
-from videotolottie import VideoToLottieConverter
+from videotolottie import CompactVideoToLottie
 import cv2
 import base64
 from io import BytesIO
@@ -69,8 +69,8 @@ class ProgressTracker:
         }
 
 
-class ProgressVideoConverter(VideoToLottieConverter):
-    """Extended converter with progress tracking"""
+class ProgressVideoConverter(CompactVideoToLottie):
+    """Extended converter with progress tracking using compact logic"""
     
     def __init__(self, video_path, output_path, fps, quality, max_width, tracker):
         super().__init__(video_path, output_path, fps, quality, max_width)
@@ -81,197 +81,152 @@ class ProgressVideoConverter(VideoToLottieConverter):
         self.tracker.update("extracting", 10, "Opening video file...")
         
         cap = cv2.VideoCapture(self.video_path)
-        
         if not cap.isOpened():
-            raise ValueError(f"Cannot open video file: {self.video_path}")
-        
-        # Get video properties
-        original_fps = cap.get(cv2.CAP_PROP_FPS)
+            raise RuntimeError(f"Cannot open video: {self.video_path}")
+
+        orig_fps = cap.get(cv2.CAP_PROP_FPS)
+        interval = max(1, int(orig_fps / self.fps))
+
+        w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+        h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
         total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-        width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-        height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-        
+
+        if w > self.max_width:
+            scale = self.max_width / w
+            w = self.max_width
+            h = int(h * scale)
+
         self.tracker.update("extracting", 15, 
-                          f"Video: {width}x{height}, {original_fps:.1f}fps, {total_frames} frames")
-        
-        # Calculate frame sampling rate
-        frame_interval = max(1, int(original_fps / self.target_fps))
-        
-        # Calculate output dimensions
-        if width > self.max_width:
-            output_width = self.max_width
-            output_height = int(height * (self.max_width / width))
-        else:
-            output_width = width
-            output_height = height
+                          f"Video: {w}x{h}, {orig_fps:.1f}fps, {total_frames} frames")
         
         frames = []
-        frame_count = 0
-        extracted_count = 0
-        expected_frames = total_frames // frame_interval
-        
+        idx = 0
+        expected_frames = total_frames // interval
+
         self.tracker.update("extracting", 20, 
-                          f"Extracting frames (every {frame_interval} frame)...",
+                          f"Extracting frames (every {interval} frame)...",
                           expected_frames, 0)
-        
+
         while True:
             ret, frame = cap.read()
             if not ret:
                 break
-            
-            if frame_count % frame_interval == 0:
-                # Resize with high-quality interpolation
-                resized = cv2.resize(frame, (output_width, output_height), 
-                                    interpolation=cv2.INTER_LANCZOS4)
-                
-                # Convert BGR to RGB
-                rgb_frame = cv2.cvtColor(resized, cv2.COLOR_BGR2RGB)
-                frames.append(rgb_frame)
-                extracted_count += 1
+
+            if idx % interval == 0:
+                frame = cv2.resize(frame, (w, h), interpolation=cv2.INTER_LANCZOS4)
+                frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                frames.append(frame)
                 
                 # Update progress (20-50% range for extraction)
-                progress = 20 + int((extracted_count / max(1, expected_frames)) * 30)
+                progress = 20 + int((len(frames) / max(1, expected_frames)) * 30)
                 self.tracker.update("extracting", progress, 
-                                  f"Extracted {extracted_count} frames...",
-                                  expected_frames, extracted_count)
-            
-            frame_count += 1
-        
+                                  f"Extracted {len(frames)} frames...",
+                                  expected_frames, len(frames))
+
+            idx += 1
+
         cap.release()
         
         self.tracker.update("extracting", 50, 
-                          f"Extraction complete: {extracted_count} frames",
-                          extracted_count, extracted_count)
+                          f"Extraction complete: {len(frames)} frames",
+                          len(frames), len(frames))
         
-        return frames, output_width, output_height
-    
-    def detect_duplicate_frames(self, frames, threshold=0.98):
+        return frames, w, h
+
+    def smooth_frames(self, frames, alpha=0.7):
         """Override with progress tracking"""
-        self.tracker.update("analyzing", 55, "Analyzing frames for optimization...")
+        self.tracker.update("smoothing", 52, "Smoothing frames for better quality...")
+        smoothed = [frames[0]]
+        total = len(frames)
         
-        frame_map = {}
-        unique_frames = []
-        unique_ids = []
-        
-        total_frames = len(frames)
-        
-        for idx, frame in enumerate(frames):
-            gray = cv2.cvtColor(frame, cv2.COLOR_RGB2GRAY)
+        for i in range(1, total):
+            prev = smoothed[-1].astype(np.float32)
+            curr = frames[i].astype(np.float32)
+            blended = cv2.addWeighted(curr, alpha, prev, 1 - alpha, 0)
+            smoothed.append(blended.astype(np.uint8))
             
-            is_duplicate = False
-            for unique_idx, (unique_gray, unique_frame) in enumerate(unique_frames):
-                similarity = self._calculate_similarity(gray, unique_gray)
-                
-                if similarity >= threshold:
-                    frame_map[idx] = unique_ids[unique_idx]
-                    is_duplicate = True
-                    break
-            
-            if not is_duplicate:
-                unique_id = len(unique_frames)
-                unique_frames.append((gray, frame))
-                unique_ids.append(unique_id)
-                frame_map[idx] = unique_id
-            
-            # Update progress (55-65% range)
-            progress = 55 + int((idx / total_frames) * 10)
-            self.tracker.update("analyzing", progress, 
-                              f"Analyzing frame {idx+1}/{total_frames}...",
-                              total_frames, idx+1)
+            # Update progress (52-58% range)
+            progress = 52 + int((i / total) * 6)
+            if i % 5 == 0:
+                self.tracker.update("smoothing", progress, 
+                                  f"Smoothing frame {i}/{total}...")
         
-        savings = ((1 - len(unique_frames)/len(frames)) * 100)
-        self.tracker.update("analyzing", 65, 
-                          f"Found {len(unique_frames)} unique frames (saved {savings:.1f}%)")
-        
-        return frame_map, [f for _, f in unique_frames]
-    
-    def create_lottie_json(self, frames, width, height):
+        return smoothed
+
+    def deduplicate(self, frames):
         """Override with progress tracking"""
-        num_frames = len(frames)
-        
-        # Detect duplicates
-        frame_map, unique_frames = self.detect_duplicate_frames(frames)
-        
-        self.tracker.update("encoding", 70, "Converting frames to WebP format...")
-        
-        # Create assets
+        self.tracker.update("analyzing", 60, "Analyzing frames for optimization...")
         assets = []
-        for idx, frame in enumerate(unique_frames):
-            base64_image = self.frame_to_base64_webp(frame)
-            
-            asset = {
-                "id": f"image_{idx}",
-                "w": width,
-                "h": height,
-                "p": base64_image,
-                "e": 1
-            }
-            assets.append(asset)
-            
-            # Update progress (70-90% range)
-            progress = 70 + int((idx / len(unique_frames)) * 20)
-            self.tracker.update("encoding", progress, 
-                              f"Encoding frame {idx+1}/{len(unique_frames)}...",
-                              len(unique_frames), idx+1)
+        frame_refs = []
+        cache = []
+        total = len(frames)
+
+        for i, frame in enumerate(frames):
+            gray = cv2.cvtColor(frame, cv2.COLOR_RGB2GRAY)
+            edges = cv2.Canny(gray, 100, 200)
+            motion = np.mean(edges)
+
+            matched = False
+            for j, (g, _) in enumerate(cache):
+                mse = np.mean((gray.astype(float) - g.astype(float)) ** 2)
+                similarity = 1.0 - (np.sqrt(mse) / 255.0)
+
+                if similarity > 0.999 and motion < 2:
+                    frame_refs.append(j)
+                    matched = True
+                    break
+
+            if not matched:
+                qf = self.quantize(frame)
+                encoded = self.encode_webp(qf)
+                asset_id = len(assets)
+
+                assets.append({
+                    "id": f"img_{asset_id}",
+                    "w": frame.shape[1],
+                    "h": frame.shape[0],
+                    "p": encoded,
+                    "e": 1
+                })
+
+                cache.append((gray, frame))
+                frame_refs.append(asset_id)
+
+            # Update progress (60-85% range)
+            progress = 60 + int((i / total) * 25)
+            if i % 5 == 0:
+                self.tracker.update("analyzing", progress, 
+                                  f"Analyzing frame {i+1}/{total}...",
+                                  total, i+1)
+
+        savings = ((1 - len(assets)/total) * 100)
+        self.tracker.update("analyzing", 85, 
+                          f"Found {len(assets)} unique frames (saved {savings:.1f}%)")
+        
+        return assets, frame_refs
+
+    def convert(self):
+        """Override convert with progress tracking"""
+        self.tracker.update("starting", 5, "Initializing compact converter...")
+        
+        # Extract frames
+        frames, w, h = self.extract_frames()
+        
+        # Smooth frames
+        frames = self.smooth_frames(frames)
+        
+        # Deduplicate and encode
+        assets, refs = self.deduplicate(frames)
         
         self.tracker.update("finalizing", 90, "Creating Lottie structure...")
         
-        # Create layers
-        layers = []
-        for idx in range(num_frames):
-            unique_id = frame_map[idx]
-            
-            layer = {
-                "ddd": 0,
-                "ind": idx + 1,
-                "ty": 2,
-                "refId": f"image_{unique_id}",
-                "ks": {
-                    "o": {"k": 100},
-                    "r": {"k": 0},
-                    "p": {"k": [width/2, height/2, 0]},
-                    "a": {"k": [width/2, height/2, 0]},
-                    "s": {"k": [100, 100, 100]}
-                },
-                "ao": 0,
-                "ip": idx,
-                "op": idx + 1,
-                "st": idx,
-                "bm": 0
-            }
-            layers.append(layer)
+        # Build Lottie
+        lottie_json = self.build_lottie(assets, refs, w, h)
         
-        # Create main structure
-        lottie_json = {
-            "v": "5.7.4",
-            "fr": self.target_fps,
-            "ip": 0,
-            "op": num_frames,
-            "w": width,
-            "h": height,
-            "assets": assets,
-            "layers": layers
-        }
-        
-        self.tracker.update("finalizing", 95, "Lottie structure created")
-        
-        return lottie_json
-    
-    def convert(self):
-        """Override convert with progress tracking"""
-        self.tracker.update("starting", 5, "Initializing converter...")
-        
-        # Extract frames
-        frames, width, height = self.extract_frames()
-        
-        # Create Lottie JSON
-        lottie_data = self.create_lottie_json(frames, width, height)
-        
-        # Save to file
-        self.tracker.update("saving", 98, "Saving Lottie JSON file...")
+        self.tracker.update("saving", 95, "Saving compact Lottie JSON file...")
         
         with open(self.output_path, 'w') as f:
-            json.dump(lottie_data, f, separators=(',', ':'))
+            json.dump(lottie_json, f, separators=(',', ':'))
         
         file_size = os.path.getsize(self.output_path)
         file_size_mb = file_size / (1024 * 1024)

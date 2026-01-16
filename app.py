@@ -199,7 +199,7 @@ class ProgressVideoConverter(CompactVideoToLottie):
                                   f"Analyzing frame {i+1}/{total}...",
                                   total, i+1)
 
-        savings = ((1 - len(assets)/total) * 100)
+        savings = ((1 - len(assets)/total) * 100) if total > 0 else 0
         self.tracker.update("analyzing", 85, 
                           f"Found {len(assets)} unique frames (saved {savings:.1f}%)")
         
@@ -211,6 +211,9 @@ class ProgressVideoConverter(CompactVideoToLottie):
         
         # Extract frames
         frames, w, h = self.extract_frames()
+        
+        if not frames:
+            raise RuntimeError("No frames could be extracted from the video.")
         
         # Smooth frames
         frames = self.smooth_frames(frames)

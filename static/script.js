@@ -200,12 +200,14 @@ function startPolling() {
 function updateProgress(status) {
     const { stage, progress, message, total_frames, processed_frames } = status;
 
-    // Update stage
+    // Update stage with preprocessing support
     const stageName = {
         'initializing': 'Initializing',
+        'preprocessing': 'Converting Video Format',  // ← Added preprocessing stage
         'starting': 'Starting',
         'extracting': 'Extracting Frames',
-        'analyzing': 'Analyzing',
+        'smoothing': 'Smoothing Frames',  // ← Added smoothing stage
+        'analyzing': 'Analyzing & Optimizing',
         'encoding': 'Encoding',
         'finalizing': 'Finalizing',
         'saving': 'Saving',
@@ -227,6 +229,13 @@ function updateProgress(status) {
             <div style="display: flex; justify-content: space-between;">
                 <span>Stage:</span>
                 <span>${stageName}</span>
+            </div>
+        `;
+    } else {
+        // Show message for preprocessing stage
+        document.getElementById('progressDetails').innerHTML = `
+            <div style="text-align: center; padding: 1rem;">
+                <span>${message}</span>
             </div>
         `;
     }

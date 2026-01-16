@@ -2,6 +2,7 @@
 """
 Flask Web Application for Video to Lottie Converter
 Provides RESTful API with real-time progress updates
+Fixed to handle AV1 and other codec issues
 """
 
 from flask import Flask, request, jsonify, send_file, render_template
@@ -20,6 +21,7 @@ import base64
 from io import BytesIO
 from PIL import Image
 import numpy as np
+import subprocess
 
 app = Flask(__name__, static_folder='static', template_folder='.')
 CORS(app)
@@ -39,6 +41,49 @@ conversion_status = {}
 def allowed_file(filename):
     """Check if file extension is allowed"""
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+
+
+def preprocess_video(input_path, output_path, tracker=None):
+    """
+    Convert video to H.264/MP4 format that OpenCV can reliably handle.
+    This fixes AV1 and other codec compatibility issues.
+    """
+    if tracker:
+        tracker.update("preprocessing", 2, "Converting video to compatible format...")
+    
+    cmd = [
+        'ffmpeg',
+        '-i', input_path,
+        '-c:v', 'libx264',      # Use H.264 codec (widely supported)
+        '-preset', 'fast',       # Fast encoding
+        '-crf', '23',            # Good quality
+        '-pix_fmt', 'yuv420p',   # Ensure compatibility
+        '-c:a', 'aac',           # Audio codec
+        '-b:a', '128k',          # Audio bitrate
+        '-movflags', '+faststart', # Web optimization
+        '-y',                    # Overwrite output
+        output_path
+    ]
+    
+    try:
+        # Run FFmpeg with output suppression
+        result = subprocess.run(
+            cmd, 
+            check=True, 
+            capture_output=True,
+            timeout=300  # 5 minute timeout
+        )
+        return True
+    except subprocess.TimeoutExpired:
+        raise RuntimeError("Video conversion timed out (max 5 minutes)")
+    except subprocess.CalledProcessError as e:
+        error_msg = e.stderr.decode() if e.stderr else "Unknown FFmpeg error"
+        raise RuntimeError(f"Video conversion failed: {error_msg}")
+    except FileNotFoundError:
+        raise RuntimeError(
+            "FFmpeg not found. Please install FFmpeg: "
+            "https://ffmpeg.org/download.html"
+        )
 
 
 class ProgressTracker:
@@ -77,12 +122,25 @@ class ProgressVideoConverter(CompactVideoToLottie):
         self.tracker = tracker
     
     def extract_frames(self):
-        """Override extract_frames with progress tracking"""
+        """Override extract_frames with progress tracking and better error handling"""
         self.tracker.update("extracting", 10, "Opening video file...")
         
         cap = cv2.VideoCapture(self.video_path)
         if not cap.isOpened():
-            raise RuntimeError(f"Cannot open video: {self.video_path}")
+            raise RuntimeError(
+                f"Cannot open video file. The video may be corrupted or in an unsupported format."
+            )
+
+        # Test if we can actually read frames
+        ret, test_frame = cap.read()
+        if not ret or test_frame is None:
+            cap.release()
+            raise RuntimeError(
+                "Cannot decode video frames. The video codec may not be supported by OpenCV."
+            )
+        
+        # Reset to beginning after test
+        cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
 
         orig_fps = cap.get(cv2.CAP_PROP_FPS)
         interval = max(1, int(orig_fps / self.fps))
@@ -126,6 +184,9 @@ class ProgressVideoConverter(CompactVideoToLottie):
             idx += 1
 
         cap.release()
+        
+        if len(frames) == 0:
+            raise RuntimeError("No frames were extracted from the video")
         
         self.tracker.update("extracting", 50, 
                           f"Extraction complete: {len(frames)} frames",
@@ -239,11 +300,21 @@ class ProgressVideoConverter(CompactVideoToLottie):
 
 def convert_video_background(job_id, video_path, output_path, fps, quality, max_width):
     """Background task for video conversion"""
+    preprocessed_path = None
     try:
         tracker = ProgressTracker(job_id)
         
+        # Preprocess video to ensure compatibility
+        preprocessed_path = video_path + "_processed.mp4"
+        
+        try:
+            preprocess_video(video_path, preprocessed_path, tracker)
+        except Exception as e:
+            raise RuntimeError(f"Video preprocessing failed: {str(e)}")
+        
+        # Use preprocessed video for conversion
         converter = ProgressVideoConverter(
-            video_path=video_path,
+            video_path=preprocessed_path,
             output_path=output_path,
             fps=fps,
             quality=quality,
@@ -266,6 +337,14 @@ def convert_video_background(job_id, video_path, output_path, fps, quality, max_
             'progress': 0,
             'message': f'Error: {str(e)}'
         }
+    finally:
+        # Cleanup temporary files
+        for path in [video_path, preprocessed_path]:
+            if path and os.path.exists(path):
+                try:
+                    os.remove(path)
+                except:
+                    pass
 
 
 @app.route('/')
